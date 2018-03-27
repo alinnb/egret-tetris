@@ -9,9 +9,12 @@
 	],
 	"game": [
 		"bin-debug/AssetAdapter.js",
+		"bin-debug/Base.js",
 		"bin-debug/Game.js",
 		"bin-debug/LoadingUI.js",
 		"bin-debug/Main.js",
-		"bin-debug/ThemeAdapter.js"
+		"bin-debug/Tetromino.js",
+		"bin-debug/ThemeAdapter.js",
+		"bin-debug/Wall.js"
 	]
 }
