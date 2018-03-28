@@ -17,8 +17,8 @@ class ConstDefine {
 	public static dir_down:string = 'dir_down';
 
 	//方块尺寸 单位：px
-	public static block_width: 30;
-	public static block_height: 30;
+	public static block_width: number = 30;
+	public static block_height: number = 30;
 
 	//游戏等级，跟速度挂钩,7个等级
 	public static levelSpeed:number[] = [1000, 800, 500, 300, 200, 100, 50]; //不同等级对应的速度，单位(ms)

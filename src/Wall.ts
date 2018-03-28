@@ -1,6 +1,9 @@
 
 class Block {
-    public _isFixed: boolean;
+    public static readonly BlockColor: number = 0x909090;
+    public static readonly BlockBorderColor: number = 0x000000;
+
+    private _isFixed: boolean;
     get isFixed() {
         return this._isFixed;
     }
@@ -16,7 +19,7 @@ class Block {
         this._disppearAnimCout = value;
     }
 
-    public _type: number;
+    private _type: number;
     get type() {
         return this._type;
     }
@@ -36,20 +39,62 @@ class Block {
 }
 
 class Wall {
+    private readonly WallColor: number = 0xddeeff;
+    private readonly WallBorderColor: number = 0x000000;
+
     private body: Block[][]; //墙体上10x20的小方块
     // private UIPos: Vector2; //用于画在Canvas上的坐标
-    private tetromino: Tetromino; //当前形状
     private nextTetrominoType: number; //下一形状
     private speed: number; //当前速度
     private drapTimer: number; //计时器，用于下落计时
     private animTimer: number; //计时器，用于动画计时
-    private GameLost: () => {}; //游戏失败的callback
 
-    public constructor() {
-        this.init();
+    //游戏失败的callback
+    private _gameLostCB: () => void; 
+    set gameLostCB(cb: () => void) {
+        this._gameLostCB = cb;
+    }
+    get gameLostCB() {
+        return this._gameLostCB;
+    }
+    
+    //行消除回调
+    private _lineClearedCB: (lines:number) => void; 
+    set lineClearedCB(cb: (lines:number) => void) {
+        this._lineClearedCB = cb;
+    }
+    get lineClearedCB() {
+        return this._lineClearedCB;
     }
 
-    public init() {
+    //获取下一个方块类型
+    private _nextTetrominoCB: () => number; 
+    set nextTetrominoCB(cb: () => number) {
+        this._nextTetrominoCB = cb;
+    }
+    get nextTetrominoCB() {
+        return this._nextTetrominoCB;
+    }
+
+    private _canvas: egret.Shape;
+    set canvas(c: egret.Shape) {
+        this._canvas = c;
+    }
+    get canvas() {
+        return this._canvas;
+    }
+
+    //当前形状
+    private _tetromino: Tetromino; 
+    set tetromino(t: Tetromino) {
+        this._tetromino = t;
+    }
+    get tetromino() {
+        return this._tetromino;
+    }
+
+    public constructor() {
+        this.body = [];
         for (let i = 0; i < 20; i++) {
             this.body[i] = [];
             for (let j = 0; j < 10; j++) {
@@ -57,12 +102,10 @@ class Wall {
             }
         }
 
-        //初始化下一个形状
-        this.nextTetromino();
+        this.tetromino = new Tetromino();
 
         //初始化当前速度
-        this.speed = ConstDefine.levelSpeed[Static.game_level]
-
+        this.speed = ConstDefine.levelSpeed[Static.game_level];
     }
 
     //初始化
@@ -73,16 +116,23 @@ class Wall {
             }
         }
 
-        this.tetromino.blockType = BlockType.BlockType_S;
+        //获得下一块类型
+        this.nextTetrominoType = this.nextTetrominoCB();
+        this.tetromino.setNewType(this.nextTetrominoType);
+        //设置好新的坐标
         this.tetromino.positon = new Vector2(this.body[0].length / 2, 0);
+		this.tetromino.isHidden = false;
 
         this.setSpeed(Static.game_level);
+
+		//reset timer
+		this.resetTetrominoTimer();
     }
 
     //随机生成下一个形状
     public randomNextTetromino() {
-        this.nextTetrominoType = Math.floor(Math.random() * BlockType.BlockType_MAX)
-        console.log('Error genrate wrong type', this.nextTetrominoType)
+        this.nextTetrominoType = Math.floor(Math.random() * BlockType.BlockType_MAX);
+        console.log('Error genrate wrong type', this.nextTetrominoType);
     }
 
     //充值计时器，开始下一次下落的计时
@@ -149,22 +199,23 @@ class Wall {
 
     //开始进行消除动画，异步处理
     public startLineClear(lines) {
-        let that = this;
-        let clearAnim = new Promise(function (resolve, reject) {
+        let self = this;
+        let clearAnim = new Promise((resolve, reject) => {
 
             //每100ms 变换一次动画
-            that.animTimer = setInterval(() => {
+            self.animTimer = setInterval(() => {
                 for (let i in lines) {
-                    that.playLineAnim(lines[i]);
+                    self.playLineAnim(lines[i]);
                 }
+                self.updateShape();
             }, ConstDefine.FlashInterval);
 
             //1 sec 后结束
             setTimeout(() => {
                 for (let i in lines) {
-                    that.stopLineAnim(lines[i]);
+                    self.stopLineAnim(lines[i]);
                 }
-                clearInterval(that.animTimer);
+                clearInterval(self.animTimer);
                 resolve();
             }, ConstDefine.DisappearTime);
         })
@@ -215,24 +266,7 @@ class Wall {
         //if can 
         let lines = this.getClearLines();
         if (lines.length > 0) {
-            Static.game_score += ConstDefine.score[lines.length - 1];
-            Static.game_topScore = Static.game_topScore < Static.game_score ? Static.game_score : Static.game_topScore;
-            Static.game_lines += lines.length;
-
-            //todo
-            // topScoreText.innerHTML = Static.game_topScore;
-            // scoreText.innerHTML = Static.game_score;
-            // linesText.innerHTML = Static.game_lines;
-
-            for (let i:number = 0; i < ConstDefine.levelupScore.length; i++) {
-                if (Static.game_score >= ConstDefine.levelupScore[i]) {
-                    let newlevel:number = ConstDefine.levelupScore.length - 1 - i;
-                    if (newlevel > Static.game_level) {
-                        Static.game_level = newlevel;
-                        console.log("Level up!");
-                    }
-                }
-            }
+            this.lineClearedCB(lines.length);
 
             //stop timer
             this.stopTetrominoTimer();
@@ -242,6 +276,7 @@ class Wall {
                 that.stopLineAnim(lines);
                 that.resetTetrominoTimer();
                 that.lineClear(lines);
+                that.updateShape();
             })
         }
     }
@@ -309,6 +344,7 @@ class Wall {
             this.body[y][x].isFixed = true;
             this.body[y][x].type = this.tetromino.blockType;
         }
+        this.updateShape();
     }
 
     //检测是否失败
@@ -322,11 +358,12 @@ class Wall {
     }
 
     //随机生成下一个形状
-    public nextTetromino() {
-        this.tetromino.init();
-        this.tetromino.blockType = this.nextTetrominoType
+    public nextTetromino() {        
+        //获得下一块类型
+        this.nextTetrominoType = this.nextTetrominoCB();
+        this.tetromino.setNewType(this.nextTetrominoType);
+        //设置好新的坐标
         this.tetromino.positon = new Vector2(this.body[0].length / 2, 0);
-        this.randomNextTetromino();
     }
 
     //自动下落一层
@@ -345,33 +382,43 @@ class Wall {
             this.nextTetromino();
         }
     }
-    
-	// //墙体绘制，包括当前下落的形状
-	// w.draw = function () {
-	// 	Draw.fillRect(this.canvas, this.UIPos.x, this.UIPos.y,
-	// 		this.body[0].length * ConstDefine.block_width,
-	// 		this.body.length * ConstDefine.block_height, ConstColor.WallColor)
 
-	// 	for (let i = 0; i < this.body[0].length; i++) {
-	// 		for (let j = 0; j < this.body.length; j++) {
-	// 			if (this.body[j][i].isFixed) {
-	// 				let x = i * ConstDefine.block_width + this.UIPos.x
-	// 				let y = j * ConstDefine.block_height + this.UIPos.y
+    //墙体绘制，包括当前下落的形状
+    public updateShape() {
 
-	// 				if (this.body[j][i].disappearAnimCount % 2 == 0) {
-	// 					Draw.fillRect(this.canvas, x + 1, y + 1, ConstDefine.block_width - 2, ConstDefine.block_height - 2, ConstColor.BlockColor)
-	// 					Draw.drawRect(this.canvas, x + 1, y + 1, ConstDefine.block_width - 2, ConstDefine.block_height - 2, ConstColor.BlockBorderColor)
-	// 				}
-	// 			}
-	// 		}
-	// 	}
+        // this.canvas.graphics.beginFill(this.TetrominoColor[this.blockType]);
+        // this.canvas.graphics.lineStyle(1, this.BlockBorderColor);
+        // this.canvas.graphics.drawRect(x + 1, y + 1, ConstDefine.block_width - 2, ConstDefine.block_height - 2);
+        // this.canvas.graphics.endFill();
 
-	// 	if(Static.game_state == ConstDefine.gameStateRunning) {
-	// 		this.tetromino.draw(this.UIPos)
-	// 	}
-		
-	// 	Draw.drawRect(this.canvas, this.UIPos.x, this.UIPos.y,
-	// 		this.body[0].length * ConstDefine.block_width,
-	// 		this.body.length * ConstDefine.block_height, ConstColor.WallBorderColor)
-	// }
+        // Draw.fillRect(this.canvas, this.UIPos.x, this.UIPos.y,
+        // 	this.body[0].length * ConstDefine.block_width,
+        // 	this.body.length * ConstDefine.block_height, ConstColor.P)
+		this.canvas.graphics.clear();
+
+        for (let i = 0; i < this.body[0].length; i++) {
+            for (let j = 0; j < this.body.length; j++) {
+                if (this.body[j][i].isFixed) {
+                    let x = i * ConstDefine.block_width;
+                    let y = j * ConstDefine.block_height;
+
+                    if (this.body[j][i].disappearAnimCount % 2 == 0) {
+                        this.canvas.graphics.beginFill(Block.BlockColor);
+                        this.canvas.graphics.lineStyle(1, Block.BlockBorderColor);
+                        this.canvas.graphics.drawRect(x, y, ConstDefine.block_width, ConstDefine.block_height);
+                        this.canvas.graphics.endFill();
+                    }
+                }
+            }
+        }
+        // 	if(Static.game_state == ConstDefine.gameStateRunning) {
+        // 		this.tetromino.draw(this.UIPos)
+        // 	}
+
+        // 	Draw.drawRect(this.canvas, this.UIPos.x, this.UIPos.y,
+        // 		this.body[0].length * ConstDefine.block_width,
+        // 		this.body.length * ConstDefine.block_height, ConstColor.WallBorderColor)
+        // }
+    }
+
 }
