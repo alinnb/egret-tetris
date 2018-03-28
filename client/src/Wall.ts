@@ -167,7 +167,6 @@ class Wall {
             allLines.push(this.tetromino.positon.y + shape[i][1]);
         }
         allLines = allLines.filter(function (element, index, self) {
-            console.log(self.indexOf(element), index);
             return self.indexOf(element) === index;
         })
         for (let i in allLines) {
